@@ -36,4 +36,4 @@ gencert:
 
 .PHONY: linux
 linux:
-	CGO_ENABLE=0 GOOS=linux GOARCH=amd64 go build -o bin/proglog ./cmd/proglog
+	CGO_ENABLE=0 GOOS=linux GOARCH=amd64 go build -o bin/boom ./cmd/boom
