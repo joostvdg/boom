@@ -4,6 +4,14 @@ Practice application for managing a distributed log of software assets
 
 ## TODO
 
+### Now
+
+* let server talk to other servers
+* let server shutdown gracefully
+* let server say goodbye when _gracefully shutting down_
+
+### Next
+
 * consensus protocol
   * discovery: multi modes (kubernetes, via client?)
   * leadership election
