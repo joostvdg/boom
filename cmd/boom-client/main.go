@@ -62,7 +62,7 @@ func sendAnotherSillyMessage()  {
 		IP:         &ip,
 	}
 	message := member.CreateMemberMessage()
-	serverAddress := "127.0.0.1" + api.HelloPort
+	serverAddress := "127.0.0.1:" + api.HelloPort
 	udpServer, err := net.ResolveUDPAddr("udp4", serverAddress)
 	connection, err := net.ListenUDP("udp4", nil)
 	if err != nil {
@@ -82,7 +82,7 @@ func sendAnotherSillyMessage()  {
 
 func sendSillyMessage() {
 
-	serverAddress := "127.0.0.1" + api.HelloPort
+	serverAddress := "127.0.0.1:" + api.HelloPort
 	udpServer, err := net.ResolveUDPAddr("udp4", serverAddress)
 	connection, err := net.ListenUDP("udp4", nil)
 	if err != nil {

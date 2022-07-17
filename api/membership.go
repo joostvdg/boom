@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"time"
 )
 
 const MEMBERSHIP_NETWORK = "udp"
@@ -14,7 +15,7 @@ const HelloMemberNameSize = 12
 const HelloHostnameSize = 12
 const HelloIPSize = 4
 const HelloMessageHeaderSize = HelloPrefixSize + HelloMemberNameSize + HelloHostnameSize + HelloIPSize
-const HelloPort = ":7777"
+const HelloPort = "7777"
 
 
 
@@ -22,6 +23,7 @@ type Member struct {
 	MemberName string
 	Hostname   string
 	IP         *IP4Address
+	LastSeen   time.Time
 }
 
 func (m Member) CreateMemberMessage() []byte {
@@ -39,6 +41,10 @@ func (m Member) CreateMemberMessage() []byte {
 	message = appendHeaderToMessage(message, cursor, cursor+HelloIPSize, m.IP.ToByteArray())
 
 	return message
+}
+
+func (m *Member) Identifier() string {
+	return m.Hostname + "-" + m.IP.String()
 }
 
 func appendHeaderToMessage(message []byte, start int, end int, data []byte) []byte {
@@ -71,6 +77,7 @@ func ReadMemberMessage(rawMessage []byte) (*Member, error) {
 		C: ip[2],
 		D: ip[3],
 	}
+
 	member := &Member{
 		MemberName: string(memberName),
 		Hostname:   string(hostname),
