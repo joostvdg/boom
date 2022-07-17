@@ -1,4 +1,12 @@
-CONFIG_PATH=${HOME}/.proglog/
+CONFIG_PATH=${HOME}/.boom/
+NAME := boom
+GO := go
+ROOT_PACKAGE := $(GIT_PROVIDER)/joostvdg/$(NAME)
+GO_VERSION := $(shell $(GO) version | sed -e 's/^[^0-9.]*\([0-9.]*\).*/\1/')
+PACKAGE_DIRS := $(shell $(GO) list ./... | grep -v /vendor/)
+PKGS := $(shell go list ./... | grep -v /vendor | grep -v generated)
+CGO_ENABLED = 0
+
 
 .PHONY: init
 init:
@@ -37,3 +45,17 @@ gencert:
 .PHONY: linux
 linux:
 	CGO_ENABLE=0 GOOS=linux GOARCH=amd64 go build -o bin/boom ./cmd/boom
+
+.PHONY: server
+server:
+	CGO_ENABLE=0 go build -o bin/boom ./cmd/boom-server
+
+.PHONY: client
+client:
+	CGO_ENABLE=0 go build -o bin/boom-client ./cmd/boom-client
+
+test:
+	CGO_ENABLED=$(CGO_ENABLED) $(GO) test $(PACKAGE_DIRS) -test.v -coverprofile cp.out
+
+fmt:
+	@gofmt -s -w -l **/*.go

@@ -19,6 +19,7 @@ func main() {
 
 	listNetworkInterfaces()
 	sendSillyMessage()
+	sendAnotherSillyMessage()
 }
 
 func listNetworkInterfaces() {
@@ -53,6 +54,32 @@ func listNetworkInterfaces() {
 	}
 }
 
+func sendAnotherSillyMessage()  {
+	ip, _ := api.NewIP4Address("127.0.0.1")
+	member := &api.Member{
+		MemberName: "MySelf",
+		Hostname:   "localhost",
+		IP:         &ip,
+	}
+	message := member.CreateMemberMessage()
+	serverAddress := "127.0.0.1" + api.HelloPort
+	udpServer, err := net.ResolveUDPAddr("udp4", serverAddress)
+	connection, err := net.ListenUDP("udp4", nil)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	defer connection.Close()
+	localAddr := connection.LocalAddr().(*net.UDPAddr)
+	fmt.Printf("Local Address: %s", localAddr)
+	_, err = connection.WriteToUDP(message, udpServer)
+	if err != nil {
+		fmt.Printf("Received an error: %s", err)
+		return
+	}
+}
+
 func sendSillyMessage() {
 
 	serverAddress := "127.0.0.1" + api.HelloPort
@@ -64,6 +91,8 @@ func sendSillyMessage() {
 	}
 
 	defer connection.Close()
+	localAddr := connection.LocalAddr().(*net.UDPAddr)
+	fmt.Printf("Local Address: %s", localAddr)
 	message := constructMembershipMessage(connection.LocalAddr().String())
 
 	_, err = connection.WriteToUDP(message, udpServer)
@@ -74,6 +103,7 @@ func sendSillyMessage() {
 }
 
 func constructMembershipMessage(localAddress string) []byte {
+	ip, _ := api.NewIP4Address("127.0.0.1")
 	hostname, err := os.Hostname()
 	if err != nil {
 		fmt.Println(err)
@@ -83,7 +113,7 @@ func constructMembershipMessage(localAddress string) []byte {
 	member := &api.Member{
 		MemberName: "MySelf",
 		Hostname:   hostname,
-		IP:         localAddress,
+		IP:         &ip,
 	}
 	return member.CreateMemberMessage()
 }

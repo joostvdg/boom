@@ -35,5 +35,13 @@ func startHelloServer() {
 			return
 		}
 		fmt.Printf("Received message %s from %s\n", string(buffer[0:numberOfBytes]), address.String())
+		member, err := api.ReadMemberMessage(buffer[0:numberOfBytes])
+		if err != nil {
+			fmt.Printf("Ran into an error: %s\n", err)
+		} else {
+			fmt.Printf("Received Member Hello: %+v\n", member)
+		}
 	}
 }
+
+
