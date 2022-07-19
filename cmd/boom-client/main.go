@@ -2,10 +2,8 @@ package main
 
 import (
 	"fmt"
-	"net"
-	"os"
-
 	"github.com/joostvdg/boom/api"
+	"net"
 )
 
 const (
@@ -93,7 +91,7 @@ func sendSillyMessage() {
 	defer connection.Close()
 	localAddr := connection.LocalAddr().(*net.UDPAddr)
 	fmt.Printf("Local Address: %s", localAddr)
-	message := constructMembershipMessage(connection.LocalAddr().String())
+	message := api.ConstructMembershipMessage(connection.LocalAddr().String())
 
 	_, err = connection.WriteToUDP(message, udpServer)
 	if err != nil {
@@ -102,18 +100,4 @@ func sendSillyMessage() {
 	}
 }
 
-func constructMembershipMessage(localAddress string) []byte {
-	ip, _ := api.NewIP4Address("127.0.0.1")
-	hostname, err := os.Hostname()
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
 
-	member := &api.Member{
-		MemberName: "MySelf",
-		Hostname:   hostname,
-		IP:         &ip,
-	}
-	return member.CreateMemberMessage()
-}

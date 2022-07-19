@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"fmt"
+	"os"
 	"time"
 )
 
@@ -89,4 +90,20 @@ func ReadMemberMessage(rawMessage []byte) (*Member, error) {
 func getHeader(rawMessage []byte, start int, length int) ([]byte, int) {
 	end := start + length
 	return rawMessage[start:end], end
+}
+
+func ConstructMembershipMessage(name string, localAddress string) []byte {
+	ip, _ := NewIP4Address(localAddress)
+	hostname, err := os.Hostname()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	member := &Member{
+		MemberName: name,
+		Hostname:   hostname,
+		IP:         &ip,
+	}
+	return member.CreateMemberMessage()
 }
