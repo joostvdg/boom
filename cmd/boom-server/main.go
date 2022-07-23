@@ -23,6 +23,7 @@ func main() {
 	go server.HandleMember(myIdentity)
 	go server.ListenForMulticast()
 	go server.MulticastExistence(myMessage)
+	go server.CleanupMembers()
 	server.StartHelloServer(*helloPortOverride)
 }
 

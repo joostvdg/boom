@@ -63,12 +63,12 @@ func ListenForMulticast() {
 
 	buffer := make([]byte, 1024)
 	for {
-		numberOfBytes, address, err := connection.ReadFromUDP(buffer)
+		numberOfBytes, _, err := connection.ReadFromUDP(buffer)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		fmt.Printf("Received message %s from %s\n", string(buffer[0:numberOfBytes]), address.String())
+
 		member, err := api.ReadMemberMessage(buffer[0:numberOfBytes])
 		if err != nil {
 			fmt.Printf("Ran into an error: %s\n", err)
@@ -117,13 +117,33 @@ func HandleMember(myIdentity string) {
 				fmt.Printf("Received Hello from known Member: %s, first message since: %v\n", member.Identifier(), durationSinceLastSeen)
 			}
 			members[member.Identifier()] = member
-			<-membersLock //release tokenc
+			<-membersLock //release token
 		case member:= <-memberHelloMulticast:
 			// ignore myself
 			if member.Identifier() == myIdentity {
 				continue
 			}
+			member.LastSeen = time.Now()
+			membersLock <-struct{}{} //acquire token
+			members[member.Identifier()] = member
+			<-membersLock //release token
 			fmt.Printf("Received Multicast from Member: %s @%v(%v)\n", member.MemberName, member.Hostname, member.IP)
 		}
+	}
+}
+
+func CleanupMembers() {
+	for {
+		time.Sleep(10 * time.Second)
+		for _, member := range members {
+			durationSinceLastSeen := time.Now().Sub(member.LastSeen)
+			if durationSinceLastSeen > (time.Second * 40) {
+				membersLock <-struct{}{} //acquire token
+				delete(members, member.Identifier())
+				fmt.Printf("Removing member %v because they did not check in recently\n", member)
+				<-membersLock //release tokenc
+			}
+		}
+
 	}
 }
