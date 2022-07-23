@@ -45,7 +45,7 @@ func (m Member) CreateMemberMessage() []byte {
 }
 
 func (m *Member) Identifier() string {
-	return m.Hostname + "-" + m.IP.String()
+	return m.MemberName + "@" + m.Hostname
 }
 
 func appendHeaderToMessage(message []byte, start int, end int, data []byte) []byte {
@@ -64,7 +64,8 @@ func ReadMemberMessage(rawMessage []byte) (*Member, error) {
 	messagePrefix, bytesProcessed := getHeader(rawMessage, bytesProcessed, HelloPrefixSize)
 
 	if len(messagePrefix) == HelloPrefixSize && messagePrefix[0] == HelloPrefix {
-		fmt.Println("Received a Member Hello message!")
+		// fmt.Println("Received a Member Hello message!")
+		// message type is Hello
 	} else {
 		return nil, errors.New("unknown message")
 	}
@@ -79,12 +80,25 @@ func ReadMemberMessage(rawMessage []byte) (*Member, error) {
 		D: ip[3],
 	}
 
+	memberName = removeEmptyBytes(memberName)
+	hostname = removeEmptyBytes(hostname)
+
 	member := &Member{
 		MemberName: string(memberName),
 		Hostname:   string(hostname),
 		IP:         ip4Address,
 	}
 	return member, nil
+}
+
+func removeEmptyBytes(bytesRead []byte) []byte {
+	bytesToReturn := make([]byte, 0)
+	for _, byteRead := range bytesRead {
+		if byteRead != byte(0) {
+			bytesToReturn = append(bytesToReturn,byteRead)
+		}
+	}
+	return bytesToReturn
 }
 
 func getHeader(rawMessage []byte, start int, length int) ([]byte, int) {

@@ -91,7 +91,7 @@ func sendSillyMessage() {
 	defer connection.Close()
 	localAddr := connection.LocalAddr().(*net.UDPAddr)
 	fmt.Printf("Local Address: %s", localAddr)
-	message := api.ConstructMembershipMessage(connection.LocalAddr().String())
+	message := api.ConstructMembershipMessage("myself", connection.LocalAddr().String())
 
 	_, err = connection.WriteToUDP(message, udpServer)
 	if err != nil {
