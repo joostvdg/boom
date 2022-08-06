@@ -7,10 +7,11 @@ import (
 
 type testData struct {
 	testName string
-	name string
-	host string
-	ip   string
-	data []byte
+	name     string
+	host     string
+	ip       string
+	port     string
+	data     []byte
 }
 
 func TestMember_CreateMemberMessage(t *testing.T) {
@@ -18,39 +19,45 @@ func TestMember_CreateMemberMessage(t *testing.T) {
 		testName: "TestIfAllFieldsWork",
 		name:     "Test",
 		host:     "Boreas",
-		ip:       "0.0.0.0:37160",
+		ip:       "0.0.0.0",
+		port:     "37160",
 	}
-	testOne.data = CreateBasicTestData(testOne.name, testOne.host, testOne.ip)
+	testOne.data = CreateBasicTestData(testOne.name, testOne.host, testOne.ip, testOne.port)
 
 	testTwo := testData{
 		testName: "TestIfAllFieldsWorkAlt",
 		name:     "MySelf",
 		host:     "localhost",
-		ip:       "127.0.0.1:37160",
+		ip:       "127.0.0.1",
+		port:     "37160",
 	}
-	testTwo.data = CreateBasicTestData(testTwo.name, testTwo.host, testTwo.ip)
+	testTwo.data = CreateBasicTestData(testTwo.name, testTwo.host, testTwo.ip, testTwo.port)
 
 	testHostnameTooLongGetsTruncated := testData{
 		testName: "testHostnameTooLongGetsTruncated",
 		name:     "MySelf",
 		host:     "localhost",
-		ip:       "127.0.0.1:37160",
+		ip:       "127.0.0.1",
+		port:     "37160",
 	}
-	truncatedHostname := truncate(testHostnameTooLongGetsTruncated.host, HelloHostnameSize)
-	testHostnameTooLongGetsTruncated.data = CreateBasicTestData(testHostnameTooLongGetsTruncated.name, truncatedHostname, testHostnameTooLongGetsTruncated.ip)
+	truncatedHostname := truncate(testHostnameTooLongGetsTruncated.host, HostnameField.Size)
+	testHostnameTooLongGetsTruncated.data = CreateBasicTestData(testHostnameTooLongGetsTruncated.name, truncatedHostname, testHostnameTooLongGetsTruncated.ip, testHostnameTooLongGetsTruncated.port)
 
 	testMaxIP := testData{
 		testName: "TestMaxIPShouldWork",
 		name:     "MySelf",
 		host:     "localhost",
-		ip:       "255.255.255.254:37160",
+		ip:       "255.255.255.254",
+		port:     "37160",
 	}
-	testMaxIP.data = CreateBasicTestData(testMaxIP.name, testMaxIP.host, testMaxIP.ip)
+	testMaxIP.data = CreateBasicTestData(testMaxIP.name, testMaxIP.host, testMaxIP.ip, testMaxIP.port)
 
 	type fields struct {
 		MemberName string
 		Hostname   string
 		IP         string
+		IPSelf     string
+		Port       string
 	}
 	tests := []struct {
 		name   string
@@ -63,7 +70,8 @@ func TestMember_CreateMemberMessage(t *testing.T) {
 			fields: fields{
 				MemberName: testOne.name,
 				Hostname:   testOne.host,
-				IP:         testOne.ip,
+				IPSelf:     testOne.ip,
+				Port:       testOne.port,
 			},
 			name: testOne.testName,
 			want: testOne.data,
@@ -72,7 +80,8 @@ func TestMember_CreateMemberMessage(t *testing.T) {
 			fields: fields{
 				MemberName: testTwo.name,
 				Hostname:   testTwo.host,
-				IP:         testTwo.ip,
+				IPSelf:     testTwo.ip,
+				Port:       testTwo.port,
 			},
 			name: testTwo.testName,
 			want: testTwo.data,
@@ -81,7 +90,8 @@ func TestMember_CreateMemberMessage(t *testing.T) {
 			fields: fields{
 				MemberName: testHostnameTooLongGetsTruncated.name,
 				Hostname:   testHostnameTooLongGetsTruncated.host,
-				IP:         testHostnameTooLongGetsTruncated.ip,
+				IPSelf:     testHostnameTooLongGetsTruncated.ip,
+				Port:       testHostnameTooLongGetsTruncated.port,
 			},
 			name: testHostnameTooLongGetsTruncated.testName,
 			want: testHostnameTooLongGetsTruncated.data,
@@ -90,7 +100,8 @@ func TestMember_CreateMemberMessage(t *testing.T) {
 			fields: fields{
 				MemberName: testMaxIP.name,
 				Hostname:   testMaxIP.host,
-				IP:         testMaxIP.ip,
+				IPSelf:     testMaxIP.ip,
+				Port:       testMaxIP.port,
 			},
 			name: testMaxIP.testName,
 			want: testMaxIP.data,
@@ -98,13 +109,15 @@ func TestMember_CreateMemberMessage(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ip4Address, _ := NewIP4Address(tt.fields.IP)
+			ip4Address, _ := NewIP4Address(tt.fields.IPSelf)
 			m := Member{
 				MemberName: tt.fields.MemberName,
 				Hostname:   tt.fields.Hostname,
 				IP:         &ip4Address,
+				IPSelf:     &ip4Address,
+				PortSelf:   tt.fields.Port,
 			}
-			if got := m.CreateMemberMessage(); !reflect.DeepEqual(got, tt.want) {
+			if got := HelloMessage.CreateMemberMessage(&m); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("CreateMemberMessage() = %v, want %v", got, tt.want)
 			}
 		})
@@ -120,30 +133,37 @@ func truncate(valueToTruncate string, size int) string {
 	return string(newBytes)
 }
 
-func CreateBasicTestData(memberName string, hostname string, ipAddress string) []byte {
+func CreateBasicTestData(memberName string, hostname string, ipAddress string, port string) []byte {
 	memberNameBytes := []byte(memberName)
 	hostnameBytes := []byte(hostname)
-	ip4Address,_ := NewIP4Address(ipAddress)
+	ip4Address, _ := NewIP4Address(ipAddress)
 	ipAddressBytes := ip4Address.ToByteArray()
+	portBytes := []byte(port)
 
-	var basicTestWant = make([]byte, 0, HelloMessageHeaderSize)
+	var basicTestWant = make([]byte, 0, HelloMessage.HeaderSize())
 	basicTestWant = append(basicTestWant, HelloPrefix)
 	basicTestWant = append(basicTestWant, memberNameBytes...)
-	memberNamePadding := createPadding(HelloMemberNameSize, memberNameBytes)
+	memberNamePadding := createPadding(MemberNameField.Size, memberNameBytes)
 	if len(memberNamePadding) > 0 {
 		basicTestWant = append(basicTestWant, memberNamePadding...)
 	}
 
 	basicTestWant = append(basicTestWant, hostnameBytes...)
-	hostnamePadding := createPadding(HelloHostnameSize, hostnameBytes)
+	hostnamePadding := createPadding(HostnameField.Size, hostnameBytes)
 	if len(hostnamePadding) > 0 {
 		basicTestWant = append(basicTestWant, hostnamePadding...)
 	}
 
 	basicTestWant = append(basicTestWant, ipAddressBytes...)
-	ipAddressPadding := createPadding(HelloIPSize, ipAddressBytes)
+	ipAddressPadding := createPadding(IPField.Size, ipAddressBytes)
 	if len(ipAddressPadding) > 0 {
 		basicTestWant = append(basicTestWant, ipAddressPadding...)
+	}
+
+	basicTestWant = append(basicTestWant, portBytes...)
+	portPadding := createPadding(PortField.Size, portBytes)
+	if len(portPadding) > 0 {
+		basicTestWant = append(basicTestWant, portPadding...)
 	}
 
 	return basicTestWant
@@ -153,7 +173,7 @@ func createPadding(size int, bytes []byte) []byte {
 	var padding []byte
 	paddingLength := size - len(bytes)
 	if paddingLength > 0 {
-		padding = make([]byte, paddingLength, paddingLength )
+		padding = make([]byte, paddingLength, paddingLength)
 	}
 	return padding
 }
@@ -172,7 +192,7 @@ func TestReadMemberMessage(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ReadMemberMessage(tt.args.rawMessage)
+			got, _, err := ReadMemberMessage(tt.args.rawMessage, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ReadMemberMessage() error = %v, wantErr %v", err, tt.wantErr)
 				return

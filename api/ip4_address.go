@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-type IP4Address  struct {
+type IP4Address struct {
 	A byte
 	B byte
 	C byte
@@ -22,7 +22,7 @@ func (ip *IP4Address) ToByteArray() []byte {
 	return bytes
 }
 
-func NewIP4Address(originalAddress string) (IP4Address, error)  {
+func NewIP4Address(originalAddress string) (IP4Address, error) {
 	address := strings.Split(originalAddress, ":")[0]
 	addressParts := strings.Split(address, ".")
 	if len(addressParts) < 4 {
@@ -33,15 +33,15 @@ func NewIP4Address(originalAddress string) (IP4Address, error)  {
 	if err != nil {
 		return IP4Address{}, err
 	}
-	b,err := strconv.Atoi(addressParts[1])
+	b, err := strconv.Atoi(addressParts[1])
 	if err != nil {
 		return IP4Address{}, err
 	}
-	c,err := strconv.Atoi(addressParts[2])
+	c, err := strconv.Atoi(addressParts[2])
 	if err != nil {
 		return IP4Address{}, err
 	}
-	d,err := strconv.Atoi(addressParts[3])
+	d, err := strconv.Atoi(addressParts[3])
 	if err != nil {
 		return IP4Address{}, err
 	}

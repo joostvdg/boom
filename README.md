@@ -6,9 +6,6 @@ Practice application for managing a distributed log of software assets
 
 ### Now
 
-* let server talk to other servers
-  * ~~multicast~~
-  * remove from membership list if X seconds haven't seen
 * server shutdown
   * let server shutdown gracefully
   * let server say goodbye when _gracefully shutting down_
@@ -16,6 +13,8 @@ Practice application for managing a distributed log of software assets
 * Member heartbeat
   * create a short list
   * send heartbeat to short list
+* streamline heartbeat and multicast
+  * test
 * inform failure
   * send missing member message to shortlist
 
@@ -45,3 +44,9 @@ Practice application for managing a distributed log of software assets
 * can run as Kubernetes StatefulSet
 * GitHub actions pipeline(s) with linting, security scan
 * Tekton pipeline, based on Continous Delivery with Kubernetes book
+
+## Resources
+
+* https://www.digitalocean.com/community/tutorials/how-to-use-contexts-in-go
+* https://www.digitalocean.com/community/tutorials/understanding-maps-in-go
+* https://medium.com/@leonardo5621_66451/how-to-shutdown-a-golang-application-in-a-cleaner-way-e9307b0ea505

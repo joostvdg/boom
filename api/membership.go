@@ -3,44 +3,117 @@ package api
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
+	"reflect"
 	"time"
 )
 
-const MEMBERSHIP_NETWORK = "udp"
-const MEMBERSHIP_GROUP_ADDRESS = "230.0.0.0:7791"
+const MembershipNetwork = "udp4"
+const MembershipGroupAddress = "230.0.0.0:7791"
 
+const GoodbyePrefix byte = 0x02
+const GoodbyePrefixSize = 1
 const HelloPrefix byte = 0x01
 const HelloPrefixSize = 1
-const HelloMemberNameSize = 12
-const HelloHostnameSize = 12
-const HelloIPSize = 4
-const HelloMessageHeaderSize = HelloPrefixSize + HelloMemberNameSize + HelloHostnameSize + HelloIPSize
 const HelloPort = "7777"
 
+type MessageField struct {
+	Name            string
+	Size            int
+	MemberField     string
+	MemberFieldType string
+}
 
+type MessageType struct {
+	Prefix        byte
+	PrefixSize    int
+	MessageFields []MessageField
+}
 
 type Member struct {
 	MemberName string
 	Hostname   string
 	IP         *IP4Address
+	PortSelf   string
+	IPSelf     *IP4Address
 	LastSeen   time.Time
 }
 
-func (m Member) CreateMemberMessage() []byte {
-	message := make([]byte, HelloMessageHeaderSize, HelloMessageHeaderSize)
+var MemberNameField MessageField
+var HostnameField MessageField
+var IPField MessageField
+var PortField MessageField
+
+var HelloMessage MessageType
+var GoodbyeMessage MessageType
+
+func init() {
+	MemberNameField = MessageField{
+		Name:            "MemberName",
+		Size:            12,
+		MemberField:     "MemberName",
+		MemberFieldType: "string",
+	}
+
+	HostnameField = MessageField{
+		Name:            "Hostname",
+		Size:            12,
+		MemberField:     "Hostname",
+		MemberFieldType: "string",
+	}
+	IPField = MessageField{
+		Name:            "IP",
+		Size:            4,
+		MemberField:     "IP",
+		MemberFieldType: "ip4address",
+	}
+	PortField = MessageField{
+		Name:            "Port",
+		Size:            6,
+		MemberField:     "PortSelf",
+		MemberFieldType: "string",
+	}
+
+	HelloMessage = MessageType{
+		Prefix:        HelloPrefix,
+		PrefixSize:    HelloPrefixSize,
+		MessageFields: []MessageField{MemberNameField, HostnameField, IPField, PortField},
+	}
+	GoodbyeMessage = MessageType{
+		Prefix:        GoodbyePrefix,
+		PrefixSize:    GoodbyePrefixSize,
+		MessageFields: []MessageField{MemberNameField, HostnameField, IPField, PortField},
+	}
+}
+
+func (mt MessageType) HeaderSize() int {
+	headerSize := mt.PrefixSize
+	for _, field := range mt.MessageFields {
+		headerSize += field.Size
+	}
+	return headerSize
+}
+
+func (mt MessageType) CreateMemberMessage(m *Member) []byte {
+	message := make([]byte, mt.HeaderSize(), mt.HeaderSize())
 	cursor := 0
-	message[cursor] = HelloPrefix
-	cursor += HelloPrefixSize
+	message[cursor] = mt.Prefix
+	cursor += mt.PrefixSize
+	for _, field := range mt.MessageFields {
+		var fieldValue []byte
+		switch field.MemberFieldType {
+		case "string":
+			fieldValue = []byte(reflect.ValueOf(*m).FieldByName(field.MemberField).String())
+		case "ip4address":
+			fieldValue = m.IPSelf.ToByteArray() // special case
+		default:
+			panic("Do not understand MessageFieldType")
+		}
 
-	message = appendHeaderToMessage(message, cursor, cursor+HelloMemberNameSize, []byte(m.MemberName))
-	cursor += HelloMemberNameSize
-
-	message = appendHeaderToMessage(message, cursor, cursor+HelloHostnameSize, []byte(m.Hostname))
-	cursor += HelloHostnameSize
-
-	message = appendHeaderToMessage(message, cursor, cursor+HelloIPSize, m.IP.ToByteArray())
-
+		message = appendHeaderToMessage(message, cursor, cursor+field.Size, fieldValue)
+		cursor += field.Size
+	}
 	return message
 }
 
@@ -59,43 +132,63 @@ func appendHeaderToMessage(message []byte, start int, end int, data []byte) []by
 	return message
 }
 
-func ReadMemberMessage(rawMessage []byte) (*Member, error) {
+func ReadMemberMessage(rawMessage []byte, messageOriginAddress *net.UDPAddr) (*Member, MessageType, error) {
 	bytesProcessed := 0
+	var messageType MessageType
 	messagePrefix, bytesProcessed := getHeader(rawMessage, bytesProcessed, HelloPrefixSize)
 
-	if len(messagePrefix) == HelloPrefixSize && messagePrefix[0] == HelloPrefix {
-		// fmt.Println("Received a Member Hello message!")
-		// message type is Hello
+	if len(messagePrefix) == HelloPrefixSize {
+		prefix := messagePrefix[0]
+		switch prefix {
+		case HelloPrefix:
+			messageType = HelloMessage
+		case GoodbyePrefix:
+			messageType = GoodbyeMessage
+		default:
+			return nil, messageType, errors.New("unknown message type")
+		}
 	} else {
-		return nil, errors.New("unknown message")
+		return nil, messageType, errors.New("unreadable message")
 	}
 
-	memberName, bytesProcessed := getHeader(rawMessage, bytesProcessed, HelloMemberNameSize)
-	hostname, bytesProcessed := getHeader(rawMessage, bytesProcessed, HelloHostnameSize)
-	ip, bytesProcessed := getHeader(rawMessage, bytesProcessed, HelloIPSize)
-	ip4Address := &IP4Address{
-		A: ip[0],
-		B: ip[1],
-		C: ip[2],
-		D: ip[3],
+	// TODO replace with reading from messageType struct
+
+	memberName, bytesProcessed := getHeader(rawMessage, bytesProcessed, MemberNameField.Size)
+	hostname, bytesProcessed := getHeader(rawMessage, bytesProcessed, HostnameField.Size)
+	selfKnownIP, bytesProcessed := getHeader(rawMessage, bytesProcessed, IPField.Size)
+	port, bytesProcessed := getHeader(rawMessage, bytesProcessed, PortField.Size)
+
+	selfKnownAddress := &IP4Address{
+		A: selfKnownIP[0],
+		B: selfKnownIP[1],
+		C: selfKnownIP[2],
+		D: selfKnownIP[3],
 	}
 
 	memberName = removeEmptyBytes(memberName)
 	hostname = removeEmptyBytes(hostname)
+	port = removeEmptyBytes(port)
+
+	originAddress, err := NewIP4Address(messageOriginAddress.String())
+	if err != nil {
+		fmt.Printf("Ran into an error: %s\n", err)
+	}
 
 	member := &Member{
 		MemberName: string(memberName),
 		Hostname:   string(hostname),
-		IP:         ip4Address,
+		IPSelf:     selfKnownAddress,
+		IP:         &originAddress,
+		PortSelf:   string(port),
 	}
-	return member, nil
+	return member, messageType, nil
 }
 
 func removeEmptyBytes(bytesRead []byte) []byte {
 	bytesToReturn := make([]byte, 0)
 	for _, byteRead := range bytesRead {
 		if byteRead != byte(0) {
-			bytesToReturn = append(bytesToReturn,byteRead)
+			bytesToReturn = append(bytesToReturn, byteRead)
 		}
 	}
 	return bytesToReturn
@@ -106,7 +199,7 @@ func getHeader(rawMessage []byte, start int, length int) ([]byte, int) {
 	return rawMessage[start:end], end
 }
 
-func ConstructMembershipMessage(name string, localAddress string) []byte {
+func ConstructGoodbyeMessage(name string, localAddress string, port string) []byte {
 	ip, _ := NewIP4Address(localAddress)
 	hostname, err := os.Hostname()
 	if err != nil {
@@ -117,7 +210,25 @@ func ConstructMembershipMessage(name string, localAddress string) []byte {
 	member := &Member{
 		MemberName: name,
 		Hostname:   hostname,
-		IP:         &ip,
+		IPSelf:     &ip,
+		PortSelf:   port,
 	}
-	return member.CreateMemberMessage()
+	return GoodbyeMessage.CreateMemberMessage(member)
+}
+
+func ConstructHelloMessage(name string, localAddress string, port string) []byte {
+	ip, _ := NewIP4Address(localAddress)
+	hostname, err := os.Hostname()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	member := &Member{
+		MemberName: name,
+		Hostname:   hostname,
+		IPSelf:     &ip,
+		PortSelf:   port,
+	}
+	return HelloMessage.CreateMemberMessage(member)
 }
