@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/joostvdg/boom/api"
+	tracesdk "go.opentelemetry.io/otel/sdk/trace"
 	"net"
 	"strconv"
 	"sync"
@@ -20,6 +21,7 @@ type MembershipService func(*MembershipServiceContext)
 
 type MembershipServiceContext struct {
 	context.Context
+	TracerProvider *tracesdk.TracerProvider
 	SelfAddress    net.Addr
 	Self           api.Member
 	Identity       string
@@ -37,6 +39,7 @@ func SetReadDeadlineOnCancel(ctx context.Context, connection *net.UDPConn) {
 }
 
 func NotifyMembersOfLeaving(goodbyeMessage []byte) {
+	fmt.Printf("Notifying Members Of Leaving...\n")
 	var wg sync.WaitGroup
 	for _, member := range members {
 		wg.Add(1)

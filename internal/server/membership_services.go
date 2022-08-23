@@ -6,7 +6,11 @@ import (
 	"log"
 	"net"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
 )
+
+const name = "boom-server"
 
 func StartMembershipServer(serviceContext *MembershipServiceContext) {
 	port := serviceContext.ServerPort
@@ -32,27 +36,33 @@ func StartMembershipServer(serviceContext *MembershipServiceContext) {
 
 	fmt.Printf("Listening on port %s for Hello & Goodbye messages...\n", port)
 	for {
+		_, span := serviceContext.TracerProvider.Tracer(name).Start(ctx, "Membership")
 		numberOfBytes, address, err := connection.ReadFromUDP(buffer)
+		span.SetAttributes(attribute.Int("bytes", numberOfBytes))
+		span.SetAttributes(attribute.String("origin", address.String()))
 		if err != nil {
 			fmt.Printf("Encountered an error reading from UDP connection: %s\n", err)
 			return
 		}
 		fmt.Printf("Received message %s from %s\n", string(buffer[0:numberOfBytes]), address.String())
 		member, messageType, err := api.ReadMemberMessage(buffer[0:numberOfBytes], address)
+		helloMessageType := "unknown"
 		if err != nil {
 			fmt.Printf("Encountered an error determining message type: %s\n", err)
 		} else {
 			switch messageType.Prefix {
 			case api.HelloPrefix:
+				helloMessageType = "hello"
 				memberHello <- member
 			case api.GoodbyePrefix:
+				helloMessageType = "goodbye"
 				memberGoodbye <- member
 			default:
 				fmt.Println("Ran into an error, unknown message type")
 			}
-
 		}
-
+		span.SetAttributes(attribute.String("type", helloMessageType))
+		span.End()
 	}
 }
 
@@ -75,9 +85,13 @@ func ListenForMulticast(serviceContext *MembershipServiceContext) {
 
 	buffer := make([]byte, 1024)
 	for {
+		_, span := serviceContext.TracerProvider.Tracer(name).Start(ctx, "Membership-Broadcast")
 		numberOfBytes, originAddress, err := connection.ReadFromUDP(buffer)
+		span.SetAttributes(attribute.Int("bytes", numberOfBytes))
+		span.SetAttributes(attribute.String("origin", originAddress.String()))
 		if err != nil {
 			fmt.Printf("Received an error: %s\n", err)
+			span.End()
 			return
 		}
 
@@ -88,6 +102,7 @@ func ListenForMulticast(serviceContext *MembershipServiceContext) {
 		} else {
 			memberHelloMulticast <- member
 		}
+		span.End()
 	}
 }
 
