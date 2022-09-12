@@ -59,3 +59,4 @@ test:
 
 fmt:
 	@gofmt -s -w -l **/*.go
+

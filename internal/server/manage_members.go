@@ -40,7 +40,39 @@ func HandleMember(serviceContext *MembershipServiceContext) {
 			membersLock <- struct{}{} //acquire token
 			delete(members, member.Identifier())
 			<-membersLock //release token
+			if memberShortList[member.Identifier()] != nil {
+				memberShortListLock <- struct{}{} //acquire token
+				delete(memberShortList, member.Identifier())
+				<-memberShortListLock //release token
+			}
 			fmt.Printf("Member %s removed\ngo", member.MemberName)
+		case member := <-memberHeartbeatRequest:
+			// ignore myself
+			if member.Identifier() == myIdentity {
+				continue
+			}
+			// when we get a request, answer it with a response
+			fmt.Printf("Received heartbeat request from member %v\n", member)
+			clockUpdate <- 1
+			err := sendMessageToMember(member, serviceContext.HeartbeatResponse, "heartbeatResponse")
+			if err != nil {
+				fmt.Printf("Could not send heartbeat response to %v: %v", member, err)
+			}
+		case member := <-memberHeartbeatResponse:
+			// ignore myself
+			if member.Identifier() == myIdentity {
+				continue
+			}
+			fmt.Printf("Received heartbeat response from member %v\n", member)
+			go HandleHeartbeatResponseTrackingUpdate(member)
+		case member := <-memberNotResponding:
+			if member.Identifier() == myIdentity {
+				continue
+			fmt.Printf("We heard member %v is no longer alive, lets scrap him \n", member)
+			HandleMemberNotResponding(member, serviceContext.HeartbeatRequest)}
+			// TODO: when we've tried to reach a Member for X tries, and we do not get a response, let the others know
+			// TODO: we should probably verify this ourselves, before scrapping the poor sod
+			// TODO: limit how many times we send a failure propagation
 		case member := <-memberHelloMulticast:
 			// ignore myself
 			if member.Identifier() == myIdentity {
@@ -54,6 +86,7 @@ func HandleMember(serviceContext *MembershipServiceContext) {
 		}
 	}
 }
+
 
 func CleanupMembers(serviceContext *MembershipServiceContext) {
 	ctx := serviceContext.Context
@@ -73,7 +106,23 @@ func CleanupMembers(serviceContext *MembershipServiceContext) {
 					<-membersLock //release tokenc
 				}
 			}
-		}
 
+			// TODO: we should also cleanup failing members that have not responded to our heartbeat request
+			for _, member := range memberFailList {
+				tracker := heartbeatResponses[member.Identifier()]
+				if tracker.LastResponse.After(time.Unix(0,0)) {
+					// TODO: OMG, it is resurrected from the Dead, what to do?
+					fmt.Printf("We heard from our long lost brother: %v\n", member)
+				} else {
+					memberFailListLock <- struct{}{}
+					delete(memberFailList, member.Identifier())
+					<-memberShortListLock
+
+					heartbeatResponsesLock <- struct{}{}
+					delete(heartbeatResponses, member.Identifier())
+					<- heartbeatResponsesLock
+				}
+			}
+		}
 	}
 }

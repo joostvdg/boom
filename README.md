@@ -6,10 +6,6 @@ Practice application for managing a distributed log of software assets
 
 ### Now
 
-* server shutdown
-  * let server shutdown gracefully
-  * let server say goodbye when _gracefully shutting down_
-  * remove from membership list
 * Member heartbeat
   * create a short list
   * send heartbeat to short list
@@ -17,14 +13,29 @@ Practice application for managing a distributed log of software assets
   * test
 * inform failure
   * send missing member message to shortlist
-
+  * these then first probe (heartbeat) the perceived failed member (node)
+* Create OCI Image
+  * Hadolint
+  * Seccom Profiles
+  * Carvel Package?
+    * use dev version of `kctrl`
+* setup minimal CI
+  * TektonCD
+  * Syft for SBOM
+  * hadolint
+* Deploy as DaemonSet or Deployment
+  * deployment via FluxCD?
 
 ### Next
 
 * consensus protocol
   * discovery: multi modes (kubernetes, via client?)
+* internal clock for agreeing on message ordering
   * leadership election
   * distributed log
+  * lampart clock
+    * https://jakub-m.github.io/2022/07/17/laport-clocks-formal.html
+    * https://sookocheff.com/post/time/lamport-clock/
 * store application identity
   * certificates
   * tags to use

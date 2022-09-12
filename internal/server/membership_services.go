@@ -3,8 +3,10 @@ package server
 import (
 	"fmt"
 	"github.com/joostvdg/boom/api"
+	"go.opentelemetry.io/otel/trace"
 	"log"
 	"net"
+	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -12,6 +14,7 @@ import (
 
 const name = "boom-server"
 
+// StartMembershipServer starts the server that listens to all kinds of Membership messages
 func StartMembershipServer(serviceContext *MembershipServiceContext) {
 	port := serviceContext.ServerPort
 	ctx := serviceContext.Context
@@ -28,18 +31,23 @@ func StartMembershipServer(serviceContext *MembershipServiceContext) {
 		return
 	}
 	defer connection.Close()
-	defer fmt.Println("Exiting StartMembershipServer")
+	defer fmt.Println("Closing StartMembershipServer")
 	SetReadDeadlineOnCancel(ctx, connection)
 
 	buffer := make([]byte, 1024)
-	members = make(map[string]*api.Member)
 
 	fmt.Printf("Listening on port %s for Hello & Goodbye messages...\n", port)
 	for {
-		_, span := serviceContext.TracerProvider.Tracer(name).Start(ctx, "Membership")
+		var span trace.Span
+		if serviceContext.TracingEnabled {
+			_, span = serviceContext.TracerProvider.Tracer(name).Start(ctx, "Membership")
+		}
 		numberOfBytes, address, err := connection.ReadFromUDP(buffer)
-		span.SetAttributes(attribute.Int("bytes", numberOfBytes))
-		span.SetAttributes(attribute.String("origin", address.String()))
+		// TODO find a way to abstract away these steps
+		if serviceContext.TracingEnabled {
+			span.SetAttributes(attribute.Int("bytes", numberOfBytes))
+			span.SetAttributes(attribute.String("origin", address.String()))
+		}
 		if err != nil {
 			fmt.Printf("Encountered an error reading from UDP connection: %s\n", err)
 			return
@@ -57,16 +65,27 @@ func StartMembershipServer(serviceContext *MembershipServiceContext) {
 			case api.GoodbyePrefix:
 				helloMessageType = "goodbye"
 				memberGoodbye <- member
+			case api.HeartbeatRequestPrefix:
+				helloMessageType = "HeartbeatRequest"
+				memberHeartbeatRequest <- member
+			case api.HeartbeatResponsePrefix:
+				helloMessageType = "HeartbeatResponse"
+				memberHeartbeatResponse <- member
+			case api.MemberFailureDetectedPrefix:
+				helloMessageType = "MemberFailureDetected"
+				memberNotResponding <- member
 			default:
 				fmt.Println("Ran into an error, unknown message type")
 			}
 		}
-		span.SetAttributes(attribute.String("type", helloMessageType))
-		span.End()
+		if serviceContext.TracingEnabled {
+			span.SetAttributes(attribute.String("type", helloMessageType))
+			span.End()
+		}
 	}
 }
 
-// https://github.com/dmichael/go-multicast
+// ListenForMulticast listens for BOOM servers annoucning themselves via UDP multicast
 func ListenForMulticast(serviceContext *MembershipServiceContext) {
 	ctx := serviceContext.Context
 	addr, err := net.ResolveUDPAddr(api.MembershipNetwork, api.MembershipGroupAddress)
@@ -80,18 +99,25 @@ func ListenForMulticast(serviceContext *MembershipServiceContext) {
 		log.Fatal(err)
 	}
 	defer connection.Close()
-	defer fmt.Println("Exiting ListenForMulticast")
+	defer fmt.Println("Closing ListenForMulticast")
 	SetReadDeadlineOnCancel(ctx, connection)
 
 	buffer := make([]byte, 1024)
 	for {
-		_, span := serviceContext.TracerProvider.Tracer(name).Start(ctx, "Membership-Broadcast")
+		var span trace.Span
+		if serviceContext.TracingEnabled {
+			_, span = serviceContext.TracerProvider.Tracer(name).Start(ctx, "Membership-Broadcast")
+		}
 		numberOfBytes, originAddress, err := connection.ReadFromUDP(buffer)
-		span.SetAttributes(attribute.Int("bytes", numberOfBytes))
-		span.SetAttributes(attribute.String("origin", originAddress.String()))
+		if serviceContext.TracingEnabled {
+			span.SetAttributes(attribute.Int("bytes", numberOfBytes))
+			span.SetAttributes(attribute.String("origin", originAddress.String()))
+		}
 		if err != nil {
 			fmt.Printf("Received an error: %s\n", err)
-			span.End()
+			if serviceContext.TracingEnabled {
+				span.End()
+			}
 			return
 		}
 
@@ -102,14 +128,16 @@ func ListenForMulticast(serviceContext *MembershipServiceContext) {
 		} else {
 			memberHelloMulticast <- member
 		}
-		span.End()
+		if serviceContext.TracingEnabled {
+			span.End()
+		}
 	}
 }
 
 func MulticastExistence(serviceContext *MembershipServiceContext) {
 	ctx := serviceContext.Context
 	message := serviceContext.HelloMessage
-	clock := time.NewTicker(10 * time.Second)
+	clock := time.NewTicker(30 * time.Second)
 	for {
 		select {
 		case <-clock.C:
@@ -120,16 +148,153 @@ func MulticastExistence(serviceContext *MembershipServiceContext) {
 				fmt.Printf("Received an error: %s\n", err)
 				return
 			}
-			defer connection.Close()
-
 			_, err = connection.WriteToUDP(message, udpServer)
 			if err != nil {
 				fmt.Printf("Received an error: %s", err)
 				return
 			}
+			connection.Close() // not using defer as we're in a loop
 		case <-ctx.Done(): // Activated when ctx.Done() closes
 			fmt.Println("Closing MulticastExistence")
 			return
 		}
 	}
+}
+
+func HeartbeatCloseMembers(serviceContext *MembershipServiceContext) {
+	ctx := serviceContext.Context
+	message := serviceContext.HeartbeatRequest
+	clock := time.NewTicker(5 * time.Second)
+	for {
+		select {
+		case <-clock.C:
+			clockUpdate <- 1
+			// TODO verify if this is a good idea, at least at some point we will have populated this map
+			// TODO: maybe we should be able to provide a "starter list" as a possible override in the init
+			if len(memberShortList) < 1 && len(members) > 0 {
+				sizeCounter := 0
+				for _, member := range members {
+					if sizeCounter >= MaxShortListSize {
+						return
+					}
+					memberShortList[member.Identifier()] = member
+					sizeCounter++
+				}
+			}
+			for _, member := range memberShortList {
+				go sendHeartbeatRequest(member, message)
+			}
+		case <-ctx.Done(): // Activated when ctx.Done() closes
+			fmt.Println("Closing HeartbeatCloseMembers")
+			return
+		}
+	}
+}
+
+func sendHeartbeatRequest(memberToMessage *api.Member, message []byte) {
+	serverAddress := memberToMessage.IP.String() + ":" + memberToMessage.PortSelf
+	fmt.Printf("Sending heartbeat request message to %v @%v\n",
+		memberToMessage.MemberName, serverAddress)
+	remotePort, err := strconv.Atoi(memberToMessage.PortSelf)
+	if err != nil {
+		fmt.Printf("Encountered an error when parsing remote port: %s\n", err)
+		return
+	}
+	udpServer := net.UDPAddr{IP: net.ParseIP(memberToMessage.IP.String()), Port: remotePort}
+
+	connection, err := net.ListenUDP(api.MembershipNetwork, nil)
+	if err != nil {
+		fmt.Printf("Encountered an error when creating the local connection: %s\n", err)
+		return
+	}
+
+	defer connection.Close()
+	_, err = connection.WriteToUDP(message, &udpServer)
+	if err != nil {
+		fmt.Printf("Encountered an error when sending the heartbeat request message: %s\n", err)
+		return
+	}
+	HandleHeartbeatResponseTracking(memberToMessage)
+}
+
+func HandleClockUpdates(serviceContext *MembershipServiceContext) {
+	ctx := serviceContext.Context
+	for {
+		select {
+		case update := <-clockUpdate:
+			clockLock <- struct{}{} // acquire token
+			serviceContext.Self.Clock += update
+			<-clockLock // release token
+		case <-ctx.Done(): // Activated when ctx.Done() closes
+			fmt.Println("Closing HandleClockUpdates")
+			return
+		}
+	}
+}
+
+func HandleHeartbeatResponseTrackingUpdate(memberResponded *api.Member) {
+	if heartbeatResponses[memberResponded.Identifier()] == nil {
+		fmt.Printf("Received a response from a member we are no longer tracking: %v\n", memberResponded)
+		return
+	}
+	heartbeatResponsesLock <- struct{}{} // acquire token
+	memberTracker := heartbeatResponses[memberResponded.Identifier()]
+	memberTracker.LastResponseClock = memberResponded.Clock
+	memberTracker.LastResponse = time.Now()
+	memberTracker.MissedResponsesCounter = 0
+	<-heartbeatResponsesLock
+}
+
+func HandleHeartbeatResponseTracking(memberToTrack *api.Member) {
+	var memberTracker *heartbeatResponseTracker
+	if heartbeatResponses[memberToTrack.Identifier()] == nil {
+		fmt.Printf("Requesting a response from a new Member: %+v\n", memberToTrack)
+		memberTracker = &heartbeatResponseTracker{
+			MissedResponsesCounter: 1,
+			LastResponse:           NoResponseTime,
+			LastResponseClock:      0,
+		}
+		heartbeatResponsesLock <- struct{}{} // acquire token
+		heartbeatResponses[memberToTrack.Identifier()] = memberTracker
+		<-heartbeatResponsesLock
+	} else {
+		memberTracker = heartbeatResponses[memberToTrack.Identifier()]
+		if memberTracker.MissedResponsesCounter >= 5 {
+			fmt.Printf("We are not able to reach %v for 5 times, initiating failure propagation\n", memberToTrack)
+			// TODO: review this
+			for _, member := range memberShortList {
+				message := api.ConstructMemberFailureDetectedMessage(memberToTrack)
+				if member.Identifier() != memberToTrack.Identifier() {
+					err := sendMessageToMember(member, message, "failureDetected")
+					if err != nil {
+						fmt.Printf("Could not send MemberFailureDetected to %v: %v\n", member, err)
+					}
+				}
+			}
+		} else {
+			heartbeatResponsesLock <- struct{}{} // acquire token
+			memberTracker.MissedResponsesCounter++
+			<-heartbeatResponsesLock
+		}
+	}
+}
+
+
+func HandleMemberNotResponding(member *api.Member, message []byte) {
+	// TODO: remove from MembersList and MemberShortList
+	// TODO: add to - or update - member in MemberFailList
+	// TODO: request a heartbeat response
+	membersLock <- struct{}{} //acquire token
+	delete(members, member.Identifier())
+	<-membersLock //release token
+
+	memberShortListLock <- struct{}{}
+	delete(memberShortList, member.Identifier())
+	<-memberShortListLock
+
+	memberFailListLock <- struct{}{}
+	memberFailList[member.Identifier()] = member
+	<- memberFailListLock
+
+	go sendHeartbeatRequest(member, message)
 }
