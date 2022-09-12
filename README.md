@@ -6,9 +6,6 @@ Practice application for managing a distributed log of software assets
 
 ### Now
 
-* Member heartbeat
-  * create a short list
-  * send heartbeat to short list
 * streamline heartbeat and multicast
   * test
 * inform failure
@@ -29,8 +26,10 @@ Practice application for managing a distributed log of software assets
 ### Next
 
 * consensus protocol
+  * https://www.hashicorp.com/resources/raft-consul-consensus-protocol-explained
+  * https://thesecretlivesofdata.com/raft/
   * discovery: multi modes (kubernetes, via client?)
-* internal clock for agreeing on message ordering
+  * internal clock for agreeing on message ordering
   * leadership election
   * distributed log
   * lampart clock
