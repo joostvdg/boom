@@ -102,3 +102,28 @@ open http://localhost:16686
 * https://opentelemetry.io/docs/instrumentation/go/getting-started/
 * https://github.com/open-telemetry/opentelemetry-go/blob/main/example/jaeger/main.go
 * https://www.jaegertracing.io/docs/1.37/getting-started/
+
+### On Distributed Computing
+
+* https://www.coursera.org/learn/cloud-computing/home/week/2
+* https://www.serf.io/docs/internals/gossip.html#lifeguard
+* https://www.hashicorp.com/blog/making-gossip-more-robust-with-lifeguard
+* https://github.com/hashicorp/memberlist
+* https://martinfowler.com/articles/patterns-of-distributed-systems/gossip-dissemination.html
+* https://martinfowler.com/articles/patterns-of-distributed-systems/lamport-clock.html
+* https://www.serf.io/docs/internals/simulator.html
+* https://www.brianstorti.com/swim/
+
+### On Go
+
+* https://golang.ch/better-error-handling-with-golang/
+* https://thenotexpert.com/simple-server-binary-protocol-golang/
+* https://www.linode.com/docs/guides/developing-udp-and-tcp-clients-and-servers-in-go/
+* https://fossa.com/blog/golang-best-practices-testing-go/
+* https://go.dev/security/fuzz/
+ 
+### On Telemetry
+
+* https://www.robustperception.io/understanding-machine-cpu-usage/
+* https://medium.com/@magstherdev/opentelemetry-on-kubernetes-c167f024b35f
+* https://opentelemetry.io/docs/instrumentation/go/exporting_data/

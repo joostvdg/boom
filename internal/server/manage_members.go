@@ -54,6 +54,15 @@ func HandleMember(serviceContext *MembershipServiceContext) {
 			// when we get a request, answer it with a response
 			fmt.Printf("Received heartbeat request from member %v\n", member)
 			clockUpdate <- 1
+
+			// if we have not filled our shortlist yet, we can probably fill it with those that are talking to us
+			// TODO: this might be counter productive, and perhaps we should reset this list overtime?
+			memberShortListLock <- struct{}{}
+			if len(memberShortList) < MaxShortListSize && memberShortList[member.Identifier()] == nil {
+				memberShortList[member.Identifier()] = member
+			}
+			<-memberShortListLock
+
 			err := sendMessageToMember(member, serviceContext.HeartbeatResponse, "heartbeatResponse")
 			if err != nil {
 				fmt.Printf("Could not send heartbeat response to %v: %v", member, err)

@@ -186,6 +186,8 @@ func ReadMemberMessage(rawMessage []byte, messageOriginAddress *net.UDPAddr) (*M
 			messageType = HeartbeatResponseMessage
 		case HeartbeatRequestPrefix:
 			messageType = HeartbeatRequestMessage
+		case MemberFailureDetectedPrefix:
+			messageType = MemberFailureDetected
 		default:
 			return nil, messageType, errors.New("unknown message type")
 		}

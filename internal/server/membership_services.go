@@ -171,7 +171,10 @@ func HeartbeatCloseMembers(serviceContext *MembershipServiceContext) {
 			clockUpdate <- 1
 			// TODO verify if this is a good idea, at least at some point we will have populated this map
 			// TODO: maybe we should be able to provide a "starter list" as a possible override in the init
-			if len(memberShortList) < 1 && len(members) > 0 {
+
+			// As long as we do not have our max in the short list, we should add more
+			memberShortListLock <- struct{}{}
+			if len(memberShortList) < MaxShortListSize && len(members) > 0 {
 				sizeCounter := 0
 				for _, member := range members {
 					if sizeCounter >= MaxShortListSize {
@@ -181,6 +184,7 @@ func HeartbeatCloseMembers(serviceContext *MembershipServiceContext) {
 					sizeCounter++
 				}
 			}
+			<-memberShortListLock
 			for _, member := range memberShortList {
 				go sendHeartbeatRequest(member, message)
 			}
